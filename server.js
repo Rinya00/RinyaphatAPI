@@ -1,6 +1,9 @@
-
 const express = require('express');
 const mysql = require('mysql2');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
 const app = express();
 const port = 3000;
 
@@ -19,19 +22,46 @@ db.connect(err => {
   console.log('Connected to the database.');
 });
 
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const profileName = "profile_";
+    const ext = path.extname(file.originalname);
+    cb(null, profileName + Date.now() + ext);
+  }
+});
+
+const upload = multer({ storage: storage });
+
+db.connect();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static(uploadDir));
+
 
 // เพิ่มสินค้า
-app.post('/product', (req, res) => {
-  const { brandproduct, nameproduct, serialnumber, amount, price, cpu, ram, rom , imageFile } = req.body;
+app.post('/product', upload.single('Image'), (req, res) => {
+  const { brandproduct, nameproduct, serialnumber, amount, price, cpu, ram, rom } = req.body;
 
-  if (!brandproduct || !nameproduct || !serialnumber || !amount || !price || !cpu || !ram || !rom || !imageFile) {
+  if (!brandproduct || !nameproduct || !serialnumber || !amount || !price || !cpu || !ram || !rom) {
     return res.status(400).send({ message: 'กรุณาระบุข้อมูลให้ครบถ้วน', status: false });
   } //ตรวจสอบว่าไม่มีข้อมูลที่ขาดหายไป
 
+  if (!req.file) {
+    return res.json({ "message": "ต้องมีภาพประกอบ", "status": false });
+  }
+
+  const ImageURL = `/uploads/${req.file.filename}`;
+
   const sql = `INSERT INTO product (brandproduct, nameproduct, serialnumber, amount, price, cpu, ram, rom, imageFile) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`; //ใช้เครื่องหมาย ? เพื่อป้องกัน SQL Injection
-  db.query(sql, [brandproduct, nameproduct, serialnumber, amount, price, cpu, ram, rom, imageFile ], (err, result) => {
+  db.query(sql, [brandproduct, nameproduct, serialnumber, amount, price, cpu, ram, rom, ImageURL ], (err, result) => {
     if (err) {
       console.error('Error inserting product:', err);
       return res.status(500).send({ message: 'Error saving data', status: false });
